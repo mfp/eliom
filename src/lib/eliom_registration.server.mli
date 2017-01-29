@@ -150,7 +150,11 @@ end
 (** Functor for application creation.
     See {% <<a_manual chapter="clientserver-applications" | the chapter on applications >> %}
     in the Eliom manual for details. *)
-module App (App_params : Eliom_registration_sigs.APP_PARAM) : APP
+module App (App_params : Eliom_registration_sigs.APP_PARAM) :
+sig
+  include APP
+  val eliom_appl_script_id : [> `Script] Eliom_content.Html.Id.id
+end
 
 module type TMPL_PARAMS = sig
   type t

@@ -1193,7 +1193,7 @@ module Eliom_appl_reg_make_param
     let sp = Eliom_common.get_sp () in
     sp.Eliom_common.sp_client_appl_name <> Some App_param.application_name
 
-  let eliom_appl_script_id : [ `Script ] Eliom_content.Html.Id.id =
+  let eliom_appl_script_id : [> `Script ] Eliom_content.Html.Id.id =
     Eliom_content.Html.Id.new_elt_id ~global:true ()
   let application_script ?(defer = false) ?(async = false) () =
     let a =
@@ -1489,7 +1489,11 @@ end
 
 module App
 
-    (App_param : Eliom_registration_sigs.APP_PARAM) : APP =
+    (App_param : Eliom_registration_sigs.APP_PARAM) :
+  sig
+    include APP
+    val eliom_appl_script_id : [> `Script] Eliom_content.Html.Id.id
+  end =
 
 struct
 
@@ -1501,6 +1505,8 @@ struct
       (App_param)
 
   type app_id = P.app_id
+
+  let eliom_appl_script_id = P.eliom_appl_script_id
 
   module Eliom_appl_registration = Eliom_mkreg.Make(P)
 

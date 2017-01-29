@@ -99,6 +99,7 @@ let client = {
     "eliom_shared";
     "eliom_cscache";
     "eliom_registration";
+    "eliom_request";
     "eliom_service";
     "eliom_tools";
     "eliom_types";
@@ -116,7 +117,6 @@ let client = {
     "eliom_lib_base";
     "eliom_parameter_base";
     "eliom_process";
-    "eliom_request";
     "eliom_request_info";
     "eliom_service_base";
     "eliom_route";

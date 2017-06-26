@@ -69,18 +69,31 @@ let get_global_data () =
   | _ ->
     None
 
+let normalize_app_path p =
+  (* remove "" from beginning and end of path *)
+  let p = Eliom_lib.Url.split_path p in
+  let p = match  p with "" :: p -> p          | _ -> p in
+  match List.rev p with "" :: p -> List.rev p | _ -> p
+
 let init_client_app
-    ~app_name ?(ssl = false) ~hostname ?(port = 80) ~full_path () =
+    ~app_name ?(ssl = false) ~hostname ?(port = 80) ~site_dir () =
   Lwt_log.ign_debug_f "Eliom_client.init_client_app called.";
   Eliom_process.appl_name_r := Some app_name;
   Eliom_request_info.client_app_initialised := true;
+  (* For site_dir, we want no trailing slash. We tend to concatenate
+     it with relative paths, or treat it as a prefix to be removed
+     from other paths. The trailing slash would be burdensome.
+
+     In contrast, we do need the trailing slash in
+     cpi_original_full_path, because we do have the trailing slash in
+     page URLs., Hence the site_dir @ [""] below. *)
   Eliom_process.set_sitedata
-    {Eliom_types.site_dir = full_path;
-     site_dir_string = String.concat "/" full_path};
+    {Eliom_types.site_dir = site_dir;
+     site_dir_string = String.concat "/" site_dir};
   Eliom_process.set_info {Eliom_common.cpi_ssl = ssl ;
                           cpi_hostname = hostname;
                           cpi_server_port = port;
-                          cpi_original_full_path = full_path
+                          cpi_original_full_path = site_dir @ [""]
                          };
   Eliom_process.set_request_template None;
   (* We set the tab cookie table, with the app name inside: *)
@@ -109,25 +122,41 @@ let onunload_fun _ =
 let onbeforeunload_fun _ = run_onbeforeunload ()
 
 (* Function called (in Eliom_client_main), once when starting the app.
-   Either when sent by a server or initiated on client side. *)
+   Either when sent by a server or initiated on client side.
+
+   For client apps, we read __eliom_server, __eliom_app_name,
+   __eliom_app_path JS variables set by the client app (via the HTML
+   file loading us).
+
+   - __eliom_server   : remote Eliom server to contact
+   - __eliom_app_name : application name
+   - __eliom_app_path : path app is under. We use this path for calls to
+                        server functions (see Eliom_uri). *)
 let init () =
   (* Initialize client app if the __eliom_server variable is defined *)
   if is_client_app ()
   && Js.Unsafe.global##.___eliom_server_ <> Js.undefined
   && Js.Unsafe.global##.___eliom_app_name_ <> Js.undefined
   then begin
-    let app_name = Js.to_string (Js.Unsafe.global##.___eliom_app_name_) in
+    let app_name = Js.to_string (Js.Unsafe.global##.___eliom_app_name_)
+    and site_dir =
+      Js.Optdef.case
+        Js.Unsafe.global##.___eliom_path_
+        (fun () -> [])
+        (fun p -> normalize_app_path (Js.to_string p))
+    in
     match
       Url.url_of_string (Js.to_string (Js.Unsafe.global##.___eliom_server_))
     with
     | Some (Http { hu_host; hu_port; hu_path; _ }) ->
       init_client_app
         ~app_name
-        ~ssl:false ~hostname:hu_host ~port:hu_port ~full_path:hu_path ()
+        ~ssl:false ~hostname:hu_host ~port:hu_port ~site_dir
+        ()
     | Some (Https { hu_host; hu_port; hu_path; _ }) ->
       init_client_app
         ~app_name
-        ~ssl:true ~hostname:hu_host ~port:hu_port ~full_path:hu_path ()
+        ~ssl:true ~hostname:hu_host ~port:hu_port ~site_dir ()
     | _ -> ()
   end;
 
@@ -621,6 +650,8 @@ let set_content_local ?offset ?fragment new_page =
 (* Function to be called for server side services: *)
 let set_content ~replace ?uri ?offset ?fragment content =
   Lwt_log.ign_debug ~section "Set content";
+  (* TODO: too early? *)
+  run_callbacks (flush_onchangepage ());
   match content with
   | None -> Lwt.return ()
   | Some content ->
@@ -874,7 +905,8 @@ let change_page (type m)
            let uri, l, l' =
              match
                create_request_
-                 ?absolute ?absolute_path ?https ~service ?hostname ?port
+                 ~absolute:true
+                 ?absolute_path ?https ~service ?hostname ?port
                  ?fragment ?keep_nl_params ~nl_params ?keep_get_na_params
                  get_params post_params
              with
@@ -887,6 +919,7 @@ let change_page (type m)
            in
            let l = ocamlify_params l in
            update_session_info l l';
+           run_callbacks (flush_onchangepage ());
            let%lwt () = f get_params post_params in
            change_url_string_protected ~replace uri;
            do_follow_up uri
@@ -1004,8 +1037,12 @@ let change_page_uri ?replace full_uri =
     | _ ->
       failwith "invalid url"
   with _ ->
-    (Lwt_log.ign_debug ~section "Change page uri: resort to server";
-     change_page_uri_a full_uri)
+    if is_client_app () then
+      (Lwt_log.ign_debug ~section "Change page uri: can't find service";
+       Lwt.return ())
+    else
+      (Lwt_log.ign_debug ~section "Change page uri: resort to server";
+       change_page_uri_a full_uri)
 
 (* Functions used in "onsubmit" event handler of <form>.  *)
 
@@ -1185,3 +1222,5 @@ let () =
        call_ocaml_service ~absolute:true ~service ())
 
 let get_application_name = Eliom_process.get_application_name
+
+let set_client_html_file = Eliom_common.set_client_html_file

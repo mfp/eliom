@@ -33,13 +33,17 @@ open Eliom_lib
     Alternatively, and to make sure it is done early enough, define
     JS variables called [__eliom_server] and [__eliom_app_name]
     at the beginning of your html
-    file, containing the full URL of your server. *)
+    file, containing the full URL of your server.
+
+    [site_dir] (if given) specifies the path that the application runs
+    under. It should correspond to the <site> tag of your server
+    configuration. Calls to server functions use this path. *)
 val init_client_app :
   app_name:string ->
   ?ssl:bool ->
   hostname:string ->
   ?port:int ->
-  full_path:Eliom_lib.Url.path -> unit -> unit
+  site_dir:Eliom_lib.Url.path -> unit -> unit
 
 (** Returns whether the application is sent by a server or started on
     client side. If called on server side, always returns [false].
@@ -220,6 +224,13 @@ val onload : (unit -> unit) -> unit
 (** Returns a Lwt thread that waits until the next page is loaded. *)
 val lwt_onload : unit -> unit Lwt.t
 
+(** Run some code *before* the next page change, that is, before each
+    call to a page-producing service handler.
+
+    Just like onpreload, handlers registered with onchangepage only
+    apply to the next page change. *)
+val onchangepage : (unit -> unit) -> unit
+
 (** [onbeforeunload f] registers [f] as a handler to be called before
     changing the page the next time. If [f] returns [Some s], then we
     ask the user to confirm quitting. We try to use [s] in the
@@ -276,6 +287,11 @@ type ('a, +'b) server_function = 'a -> 'b Lwt.t
     If the [replace] flag is set to [true], the current page is not
     saved in the history. *)
 val change_page_uri : ?replace:bool -> string -> unit Lwt.t
+
+(** Set the name of the HTML file loading our client app. The default
+    is "eliom.html". A wrong value will not allow the app to
+    initialize itself correctly. *)
+val set_client_html_file : string -> unit
 
 (**/**)
 
